@@ -6,44 +6,36 @@ import (
 	"net/http"
 )
 
-type RegisterationUser struct {
-	User User	`json:"user"`
+type UserRegistration struct {
+	User User `json:"user"`
 }
 
 type User struct {
-	Username string	`json:"username"`
-	Email string	`json:"email"`
-	Password string	`json:"password,omitempty"`
+	Username string `json:"username"`
+	Email    string `json:"email"`
+	Password string `json:"password,omitempty"`
+	Token    string `json:"token"`
 }
 
-type UserHandler struct {
-	Path string
+type UserRegistrationHandler struct {
+	Path           string
 	UserRepository UserRepository
 }
 
-func (u *UserHandler) Register(writer http.ResponseWriter, request *http.Request) {
-
-	registerUserRequest  := RegisterationUser{}
-	registerUserResponse := RegisterationUser{}
-
+func (u *UserRegistrationHandler) Register(writer http.ResponseWriter, request *http.Request) {
 	requestBody, _ := ioutil.ReadAll(request.Body)
+	userRegistrationRequest := UserRegistration{}
+	_ = json.Unmarshal(requestBody, &userRegistrationRequest)
+	requestUser := userRegistrationRequest.User
+	_ = u.UserRepository.RegisterUser(&requestUser)
 
-	_ = json.Unmarshal(requestBody, &registerUserRequest)
-	requestUser := registerUserRequest.User
-
-	_ = u.UserRepository.RegisterUser(requestUser)
-
-	writer.WriteHeader(http.StatusCreated)
+	writer.WriteHeader(201)
 	writer.Header().Add("Content-Type", "application/json")
-
-	responseUser := User{
-		Username: requestUser.Username,
-		Email:    requestUser.Email,
-	}
-
-	registerUserResponse.User = responseUser
-
-	bytes, _ := json.Marshal(&registerUserResponse)
+	userRegistrationResponse := UserRegistration{
+		User: User{
+			Username: requestUser.Username,
+			Email:    requestUser.Email,
+		}}
+	bytes, _ := json.Marshal(&userRegistrationResponse)
 	_, _ = writer.Write(bytes)
-
 }
