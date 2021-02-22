@@ -59,6 +59,7 @@ var _ = Describe("Testing node repository", func() {
 			Location:        "Germany",
 		}
 
+		// test repository
 		err := repository.Save(newNode)
 
 		Expect(err).To(BeNil(), "Node should be created")
@@ -109,6 +110,96 @@ var _ = Describe("Testing node repository", func() {
 
 	})
 
+	It("FindAll", func() {
+		testNode1 := &Node{
+			Name:            "DRNMIG1A",
+			Alias:           "DEMIGVM",
+			IsGateway:       false,
+			Platform:        "Hercules 4 on Linux",
+			OperatingSystem: "VM/ESA",
+			Location:        "Germany",
+		}
+
+		testNode2 := &Node{
+			Name:            "DRNMIG3A",
+			Alias:           "DEMIGMVS",
+			IsGateway:       false,
+			Platform:        "Hercules 4 on Linux",
+			OperatingSystem: "MVS3.8J",
+			Location:        "Germany",
+		}
+
+		// create two nodes for testing
+		session := driver.NewSession(neo4j.SessionConfig{})
+
+		defer Close(session, "Session")
+
+		// test node #1
+		_, err := session.
+			WriteTransaction(func(tx neo4j.Transaction) (interface{}, error) {
+				query := "CREATE (:Node { name: $name, alias: $alias,gateway: $gateway, " +
+					"platform: $platform, os: $os, location: $location})"
+
+				parameters := map[string]interface{}{
+					"name":     testNode1.Name,
+					"alias":    testNode1.Alias,
+					"gateway":  testNode1.IsGateway,
+					"platform": testNode1.Platform,
+					"os":       testNode1.OperatingSystem,
+					"location": testNode1.Location,
+				}
+
+				_, err := tx.Run(query, parameters)
+
+				return nil, err
+			})
+
+		Expect(err).To(BeNil(), "The write transaction should not fail")
+
+		// test node #2
+		_, err = session.
+			WriteTransaction(func(tx neo4j.Transaction) (interface{}, error) {
+				query := "CREATE (:Node { name: $name, alias: $alias,gateway: $gateway, " +
+					"platform: $platform, os: $os, location: $location})"
+
+				parameters := map[string]interface{}{
+					"name":     testNode2.Name,
+					"alias":    testNode2.Alias,
+					"gateway":  testNode2.IsGateway,
+					"platform": testNode2.Platform,
+					"os":       testNode2.OperatingSystem,
+					"location": testNode2.Location,
+				}
+
+				_, err := tx.Run(query, parameters)
+
+				return nil, err
+			})
+
+		Expect(err).To(BeNil(), "The write transaction should not fail")
+
+		// test repository function FindByAll
+		allNodes, err := repository.FindAll()
+
+		var foundNode1 *Node
+		var foundNode2 *Node
+
+		for _, node := range allNodes {
+			Expect(node).To(Not(BeNil()), "First node found, should not be nil")
+
+			if node.Name == testNode1.Name {
+				foundNode1 = node
+			}
+
+			if node.Name == testNode2.Name {
+				foundNode2 = node
+			}
+		}
+
+		Expect(foundNode1).To(Equal(testNode1), "We should have found our 1st testing node")
+		Expect(foundNode2).To(Equal(testNode2), "We should have found our 2nd testing node")
+	})
+
 	It("FindByName", func() {
 		testNode := &Node{
 			Name:            "DRNBRX9A",
@@ -121,7 +212,6 @@ var _ = Describe("Testing node repository", func() {
 
 		// create a node for testing
 		session := driver.NewSession(neo4j.SessionConfig{})
-
 		defer Close(session, "Session")
 
 		_, err := session.
@@ -142,8 +232,87 @@ var _ = Describe("Testing node repository", func() {
 
 				return nil, err
 			})
-
 		Expect(err).To(BeNil(), "The write transaction should not fail")
+
+		// test repository function FindByName
+		foundNode, err := repository.FindByName(testNode.Name)
+		Expect(err).To(BeNil(), "FindByeName should not end with an error")
+		Expect(foundNode).To(Not(BeNil()), "Node should be found")
+		Expect(foundNode).To(Equal(testNode))
+
+		// test repository function FindByName with a non existing node
+		foundNode, err = repository.FindByName("DUMMY")
+		Expect(err).To(Not(BeNil()), "Should end with an error")
+	})
+
+	It("DeleteByName", func() {
+		testNode := &Node{
+			Name:            "DRNMIG9A",
+			Alias:           "DEMIGLNX",
+			IsGateway:       false,
+			Platform:        "Linux",
+			OperatingSystem: "Linux",
+			Location:        "Germany",
+		}
+
+		// create a node for testing
+		session := driver.NewSession(neo4j.SessionConfig{})
+		defer Close(session, "Session")
+
+		_, err := session.
+			WriteTransaction(func(tx neo4j.Transaction) (interface{}, error) {
+				query := "CREATE (:Node { name: $name, alias: $alias,gateway: $gateway, " +
+					"platform: $platform, os: $os, location: $location})"
+
+				parameters := map[string]interface{}{
+					"name":     testNode.Name,
+					"alias":    testNode.Alias,
+					"gateway":  testNode.IsGateway,
+					"platform": testNode.Platform,
+					"os":       testNode.OperatingSystem,
+					"location": testNode.Location,
+				}
+
+				_, err := tx.Run(query, parameters)
+
+				return nil, err
+			})
+		Expect(err).To(BeNil(), "The write transaction should not fail")
+
+		// test repository function DeleteByName
+		err = repository.DeleteByName(testNode.Name)
+		Expect(err).To(BeNil(), "Node should be deleted")
+
+		// test if node is really gone
+		_, err = session.
+			ReadTransaction(func(tx neo4j.Transaction) (interface{}, error) {
+				res, err := tx.Run("MATCH (n:Node {name: $name}) "+
+					"RETURN n.name AS Name, n.alias AS Alias, n.gateway AS IsGateway, "+
+					"n.platform AS Platform, n.os AS OperatingSystem, n.location AS Location ",
+					map[string]interface{}{
+						"name": testNode.Name,
+					})
+
+				if err != nil {
+					return nil, err
+				}
+
+				singleRecord, err := res.Single()
+				if err != nil {
+					return nil, err
+				}
+
+				return &Node{
+					Name:            singleRecord.Values[0].(string),
+					Alias:           singleRecord.Values[1].(string),
+					IsGateway:       singleRecord.Values[2].(bool),
+					Platform:        singleRecord.Values[3].(string),
+					OperatingSystem: singleRecord.Values[4].(string),
+					Location:        singleRecord.Values[5].(string),
+				}, nil
+			})
+		Expect(err).To(Not(BeNil()), "Should end with an error")
+
 	})
 
 })
