@@ -23,11 +23,26 @@ type UserRegistrationHandler struct {
 }
 
 func (u *UserRegistrationHandler) Register(writer http.ResponseWriter, request *http.Request) {
+	method := request.Method
+	if method != "POST" {
+		writer.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
 	requestBody, _ := ioutil.ReadAll(request.Body)
 	userRegistrationRequest := UserRegistration{}
-	_ = json.Unmarshal(requestBody, &userRegistrationRequest)
+	err := json.Unmarshal(requestBody, &userRegistrationRequest)
+	if err != nil {
+		writer.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
 	requestUser := userRegistrationRequest.User
-	_ = u.UserRepository.RegisterUser(&requestUser)
+	err = u.UserRepository.RegisterUser(&requestUser)
+	if err != nil {
+
+		panic(err)
+	}
 
 	writer.WriteHeader(201)
 	writer.Header().Add("Content-Type", "application/json")
